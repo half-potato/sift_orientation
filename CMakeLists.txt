@@ -7,12 +7,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 ###============= C++11 support====================================
 if(${CMAKE_VERSION} VERSION_LESS "3.1")
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
+CHECK_CXX_COMPILER_FLAG("-std=c++11 -g" COMPILER_SUPPORTS_CXX11)
+CHECK_CXX_COMPILER_FLAG("-std=c++0x -g" COMPILER_SUPPORTS_CXX0X)
 if (COMPILER_SUPPORTS_CXX11)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g")
 elseif (COMPILER_SUPPORTS_CXX0X)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -g")
 else ()
     message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif ()
@@ -29,7 +29,7 @@ set_property(CACHE PYTHON_DESIRED_VERSION PROPERTY STRINGS ${PYTHON_OPTIONS})
 
 #=============== Find Packages ====================================
 ## OpenCV
-find_package(OpenCV COMPONENTS core REQUIRED)
+find_package(OpenCV COMPONENTS core features2d highgui REQUIRED)
 
 ## Python
 include("DetectPython")
@@ -171,3 +171,5 @@ if (BUILD_TEST_PROJECT)
     pbcvt_add_pbcvt_library(static_pbcvt ON)
     add_subdirectory(tests)
 endif()
+
+MESSAGE(STATUS ${CMAKE_CXX_FLAGS})

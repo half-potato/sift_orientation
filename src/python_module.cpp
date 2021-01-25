@@ -5,12 +5,93 @@
 #include <boost/python.hpp>
 #include <pyboostcvconverter/pyboostcvconverter.hpp>
 #include <opencv2/features2d.hpp>
+#include <opencv2/highgui.hpp>
 #include "sift.simd.hpp"
+#include <iostream>
 
 #include <algorithm>
 
 const int nOctaveLayers = 3;
 const float sigma = 1.6;
+
+std::string getImageType(int number)
+{
+    // find type
+    int imgTypeInt = number%8;
+    std::string imgTypeString;
+
+    switch (imgTypeInt)
+    {
+        case 0:
+            imgTypeString = "8U";
+            break;
+        case 1:
+            imgTypeString = "8S";
+            break;
+        case 2:
+            imgTypeString = "16U";
+            break;
+        case 3:
+            imgTypeString = "16S";
+            break;
+        case 4:
+            imgTypeString = "32S";
+            break;
+        case 5:
+            imgTypeString = "32F";
+            break;
+        case 6:
+            imgTypeString = "64F";
+            break;
+        default:
+            break;
+    }
+
+    // find channel
+    int channel = (number/8) + 1;
+
+    std::stringstream type;
+    type<<"CV_"<<imgTypeString<<"C"<<channel;
+
+    return type.str();
+}
+
+static cv::Mat createInitialImage( const cv::Mat& img, bool doubleImageSize, float sigma )
+{
+    CV_TRACE_FUNCTION();
+
+    cv::Mat gray, gray_fpt;
+    if( img.channels() == 3 || img.channels() == 4 )
+    {
+        cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+        gray.convertTo(gray_fpt, cv::DataType<cv::sift_wt>::type, cv::SIFT_FIXPT_SCALE, 0);
+    }
+    else
+        img.convertTo(gray_fpt, cv::DataType<cv::sift_wt>::type, cv::SIFT_FIXPT_SCALE, 0);
+
+    float sig_diff;
+
+    if( doubleImageSize )
+    {
+        sig_diff = sqrtf( std::max(sigma * sigma - cv::SIFT_INIT_SIGMA * cv::SIFT_INIT_SIGMA * 4, 0.01f) );
+        cv::Mat dbl;
+#if DoG_TYPE_SHORT
+        cv::resize(gray_fpt, dbl, cv::Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, cv::INTER_LINEAR_EXACT);
+#else
+        cv::resize(gray_fpt, dbl, cv::Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, cv::INTER_LINEAR);
+#endif
+        cv::Mat result;
+        cv::GaussianBlur(dbl, result, cv::Size(), sig_diff, sig_diff);
+        return result;
+    }
+    else
+    {
+        sig_diff = sqrtf( std::max(sigma * sigma - cv::SIFT_INIT_SIGMA * cv::SIFT_INIT_SIGMA, 0.01f) );
+        cv::Mat result;
+        cv::GaussianBlur(gray_fpt, result, cv::Size(), sig_diff, sig_diff);
+        return result;
+    }
+}
 
 namespace pbcvt {
 
@@ -22,11 +103,13 @@ namespace pbcvt {
     cv::Mat im, kpts;
     im = pbcvt::fromNDArrayToMat(impy);
     kpts = pbcvt::fromNDArrayToMat(keypoints);
+    printf("%i, %i\n", kpts.rows, kpts.cols);
     // First, build a gauss_pyr
 
     // Copyright (c) 2006-2010, Rob Hess <hess@eecs.oregonstate.edu>
     // Copyright (C) 2009, Willow Garage Inc., all rights reserved.
     // Copyright (C) 2020, Intel Corporation, all rights reserved.
+    cv::Mat base = createInitialImage(im, false, sigma);
     CV_TRACE_FUNCTION();
     std::vector<cv::Mat> gauss_pyr;
 
@@ -50,7 +133,7 @@ namespace pbcvt {
         {
             cv::Mat& dst = gauss_pyr[o*(nOctaveLayers + 3) + i];
             if( o == 0  &&  i == 0 )
-                dst = im;
+                dst = base;
             // base of new octave is halved image from end of previous octave
             else if( i == 0 )
             {
@@ -74,18 +157,26 @@ namespace pbcvt {
       float size = kpts.at<float>(i, 2);
       int layer = kpts.at<float>(i, 3);
       int octave = kpts.at<float>(i, 4);
+      float c = x / (1 << octave);
+      float r = y / (1 << octave);
+      // printf("%f, %f, %f, %i, %i\n", x, y, size, layer, octave);
 
       // Init variables
       int n = cv::SIFT_ORI_HIST_BINS;
-      float CV_DECL_ALIGNED(CV_SIMD_WIDTH) hist[n];
+      float hist[n];
       float scl_octv = size*0.5f/(1 << octave);
 
+      // std::cout << gauss_pyr[octave*(nOctaveLayers+3) + layer].depth() << std::endl;
+      // cv::imshow("HI", gauss_pyr[octave*(nOctaveLayers+3) + layer]);
+      // cv::waitKey(0);
       float omax = cv::opt_CV_CPU_DISPATCH_MODE::calcOrientationHist(
           gauss_pyr[octave*(nOctaveLayers+3) + layer],
-          cv::Point(x, y),
+          // cv::Point(c, r),
+          cv::Point(20, 20),
           cvRound(cv::SIFT_ORI_RADIUS * scl_octv),
           cv::SIFT_ORI_SIG_FCTR * scl_octv,
           hist, n);
+
       float mag_thr = (float)(omax * cv::SIFT_ORI_PEAK_RATIO);
       for( int j = 0; j < n; j++ )
       {
@@ -101,6 +192,7 @@ namespace pbcvt {
                   angle = 0.f;
 
               kpts.at<float>(i, 5) = angle;
+              printf("%f\n", angle);
           }
       }
     }
