@@ -11,8 +11,8 @@
 
 #include <algorithm>
 
-const int nOctaveLayers = 3;
 const float sigma = 1.6;
+const int nOctaveLayers = 3;
 
 std::string getImageType(int number)
 {
@@ -97,19 +97,19 @@ namespace pbcvt {
 
   using namespace boost::python;
 
-  PyObject *sift_desc(PyObject *impy, PyObject *keypoints, int nOctaves) {
+  PyObject *sift_desc(PyObject *impy, PyObject *keypoints, int firstOctave, int nOctaves) {
     // IDK if this is clear but there is a lot of opencv code in here
 
     cv::Mat im, kpts;
     im = pbcvt::fromNDArrayToMat(impy);
     kpts = pbcvt::fromNDArrayToMat(keypoints);
-    printf("%i, %i\n", kpts.rows, kpts.cols);
     // First, build a gauss_pyr
 
     // Copyright (c) 2006-2010, Rob Hess <hess@eecs.oregonstate.edu>
     // Copyright (C) 2009, Willow Garage Inc., all rights reserved.
     // Copyright (C) 2020, Intel Corporation, all rights reserved.
-    cv::Mat base = createInitialImage(im, false, sigma);
+    cv::Mat base = createInitialImage(im, firstOctave<0, sigma);
+    printf("%i, %i\n", base.rows, base.cols);
     CV_TRACE_FUNCTION();
     std::vector<cv::Mat> gauss_pyr;
 
@@ -148,6 +148,7 @@ namespace pbcvt {
             }
         }
     }
+    std::vector<cv::Mat> out_kpts;
 
     // Compute orientation of keypoints
     for (int i=0; i<kpts.rows; i++) {
@@ -156,10 +157,14 @@ namespace pbcvt {
       float y = kpts.at<float>(i, 1);
       float size = kpts.at<float>(i, 2);
       int layer = kpts.at<float>(i, 3);
-      int octave = kpts.at<float>(i, 4);
+      int octave = kpts.at<float>(i, 4) - firstOctave;
       float c = x / (1 << octave);
       float r = y / (1 << octave);
-      // printf("%f, %f, %f, %i, %i\n", x, y, size, layer, octave);
+      if (firstOctave < 0) {
+        size *= (1 << -firstOctave);
+        c *= (1 << -firstOctave);
+        r *= (1 << -firstOctave);
+      }
 
       // Init variables
       int n = cv::SIFT_ORI_HIST_BINS;
@@ -171,8 +176,7 @@ namespace pbcvt {
       // cv::waitKey(0);
       float omax = cv::opt_CV_CPU_DISPATCH_MODE::calcOrientationHist(
           gauss_pyr[octave*(nOctaveLayers+3) + layer],
-          // cv::Point(c, r),
-          cv::Point(20, 20),
+          cv::Point(c, r),
           cvRound(cv::SIFT_ORI_RADIUS * scl_octv),
           cv::SIFT_ORI_SIG_FCTR * scl_octv,
           hist, n);
@@ -180,24 +184,40 @@ namespace pbcvt {
       float mag_thr = (float)(omax * cv::SIFT_ORI_PEAK_RATIO);
       for( int j = 0; j < n; j++ )
       {
-          int l = j > 0 ? j - 1 : n - 1;
-          int r2 = j < n-1 ? j + 1 : 0;
+        int l = j > 0 ? j - 1 : n - 1;
+        int r2 = j < n-1 ? j + 1 : 0;
 
-          if( hist[j] > hist[l]  &&  hist[j] > hist[r2]  &&  hist[j] >= mag_thr )
-          {
-              float bin = j + 0.5f * (hist[l]-hist[r2]) / (hist[l] - 2*hist[j] + hist[r2]);
-              bin = bin < 0 ? n + bin : bin >= n ? bin - n : bin;
-              float angle = 360.f - (float)((360.f/n) * bin);
-              if(std::abs(angle - 360.f) < FLT_EPSILON)
-                  angle = 0.f;
+        if( hist[j] > hist[l]  &&  hist[j] > hist[r2]  &&  hist[j] >= mag_thr )
+        {
+          float bin = j + 0.5f * (hist[l]-hist[r2]) / (hist[l] - 2*hist[j] + hist[r2]);
+          bin = bin < 0 ? n + bin : bin >= n ? bin - n : bin;
+          float angle = 360.f - (float)((360.f/n) * bin);
+          if(std::abs(angle - 360.f) < FLT_EPSILON)
+            angle = 0.f;
 
-              kpts.at<float>(i, 5) = angle;
-              printf("%f\n", angle);
+          cv::Mat kpt = cv::Mat::zeros(1, 6, CV_32F);
+          kpt.at<float>(0, 0) = x;
+          kpt.at<float>(0, 1) = y;
+          kpt.at<float>(0, 2) = size;
+          kpt.at<float>(0, 3) = layer;
+          kpt.at<float>(0, 4) = octave;
+          kpt.at<float>(0, 5) = angle;
+          if (firstOctave < 0) {
+            if (i < 10) {
+              printf("%f, %f, %f, %i, %i\n", x, y, size, layer, octave);
+              printf("Hi\n");
+            }
+            kpt.at<float>(0, 2) /= (1 << -firstOctave);
+            kpt.at<float>(0, 4) += firstOctave;
           }
+          out_kpts.push_back(kpt);
+        }
       }
     }
 
-    PyObject *ret = pbcvt::fromMatToNDArray(kpts);
+    cv::Mat out_kpts_t;
+    cv::vconcat(out_kpts, out_kpts_t);
+    PyObject *ret = pbcvt::fromMatToNDArray(out_kpts_t);
     return ret;
   }
 
