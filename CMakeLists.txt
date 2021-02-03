@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
-project("pbcvt")
+project("sift_ori")
 
 #----------------------------CMAKE & GLOBAL PROPERTIES-------------------------#
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -69,7 +69,7 @@ if (${PYTHON_DESIRED_VERSION} STREQUAL "2.X")
     set(PYTHON_LIBRARIES ${PYTHON2_LIBRARY})
     set(PYTHON_EXECUTABLE ${PYTHON2_EXECUTABLE})
     set(PYTHON_PACKAGES_PATH ${PYTHON2_PACKAGES_PATH})
-    set(ARCHIVE_OUTPUT_NAME pbcvt_py2)
+    set(ARCHIVE_OUTPUT_NAME sift_ori_py2)
     set(ARCHIVE_OUTPUT_SUFFIX _py2)
 else ()
     set(PYTHON_INCLUDE_DIRS ${PYTHON3_INCLUDE_DIR} ${PYTHON3_INCLUDE_DIR2} ${PYTHON3_NUMPY_INCLUDE_DIRS})
@@ -77,7 +77,7 @@ else ()
     set(PYTHON_LIBRARIES ${PYTHON3_LIBRARY})
     set(PYTHON_EXECUTABLE ${PYTHON3_EXECUTABLE})
     set(PYTHON_PACKAGES_PATH ${PYTHON3_PACKAGES_PATH})
-    set(ARCHIVE_OUTPUT_NAME pbcvt_py3)
+    set(ARCHIVE_OUTPUT_NAME sift_ori_py3)
     set(ARCHIVE_OUTPUT_SUFFIX _py3)
 endif ()
 
@@ -89,7 +89,7 @@ endif()
 file(GLOB project_sources ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 
 
-macro(pbcvt_add_pbcvt_library target_name STATIC)
+macro(sift_ori_add_sift_ori_library target_name STATIC)
     if(${STATIC})
         add_library(${target_name} STATIC ${project_sources} ${CMAKE_CURRENT_SOURCE_DIR}/include/pyboostcvconverter/pyboostcvconverter.hpp)
     else()
@@ -115,7 +115,7 @@ macro(pbcvt_add_pbcvt_library target_name STATIC)
     endif()
 endmacro()
 
-pbcvt_add_pbcvt_library(${PROJECT_NAME} OFF)
+sift_ori_add_sift_ori_library(${PROJECT_NAME} OFF)
 
 #---------------------------   INSTALLATION    -----------------------------------------------------
 #-get proper extension for python binary shared object on this platform
@@ -137,7 +137,7 @@ endif()
 set_target_properties(${PROJECT_NAME} PROPERTIES
         ARCHIVE_OUTPUT_NAME ${ARCHIVE_OUTPUT_NAME}  # prevent name conflict for python2/3 outputs
         PREFIX ""
-        OUTPUT_NAME pbcvt
+        OUTPUT_NAME sift_ori
         SUFFIX ${${PROJECT_NAME}_PY_SUFFIX})
 
 
@@ -168,7 +168,7 @@ option(BUILD_TEST_PROJECT ON)
 
 if (BUILD_TEST_PROJECT)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-    pbcvt_add_pbcvt_library(static_pbcvt ON)
+    sift_ori_add_sift_ori_library(static_sift_ori ON)
     add_subdirectory(tests)
 endif()
 

@@ -93,17 +93,8 @@ static cv::Mat createInitialImage( const cv::Mat& img, bool doubleImageSize, flo
     }
 }
 
-namespace pbcvt {
-
-  using namespace boost::python;
-
-  PyObject *sift_desc(PyObject *impy, PyObject *keypoints, int firstOctave, int nOctaves) {
-    // IDK if this is clear but there is a lot of opencv code in here
-
-    cv::Mat im, kpts;
-    im = pbcvt::fromNDArrayToMat(impy);
-    kpts = pbcvt::fromNDArrayToMat(keypoints);
-    // First, build a gauss_pyr
+std::vector<cv::Mat>
+build_image_pyramid(cv::Mat im, int firstOctave, int nOctaves) {
 
     // Copyright (c) 2006-2010, Rob Hess <hess@eecs.oregonstate.edu>
     // Copyright (C) 2009, Willow Garage Inc., all rights reserved.
@@ -148,6 +139,59 @@ namespace pbcvt {
             }
         }
     }
+    return gauss_pyr;
+}
+
+namespace pbcvt {
+
+  using namespace boost::python;
+  PyObject *dog_pyramid(PyObject *impy, int firstOctave, int nOctaves) {
+    cv::Mat im;
+    im = pbcvt::fromNDArrayToMat(impy);
+    std::vector<cv::Mat> dogpyr;
+    dogpyr.resize(nOctaves * (nOctaveLayers + 2));
+    std::vector<cv::Mat> gauss_pyr = build_image_pyramid(im, firstOctave, nOctaves);
+    for( int a=0; a < nOctaves * (nOctaveLayers + 2); a++ ) {
+      const int o = a / (nOctaveLayers + 2);
+      const int i = a % (nOctaveLayers + 2);
+
+      const cv::Mat& src1 = gauss_pyr[o*(nOctaveLayers + 3) + i];
+      const cv::Mat& src2 = gauss_pyr[o*(nOctaveLayers + 3) + i + 1];
+      cv::Mat& dst = dogpyr[o*(nOctaveLayers + 2) + i];
+      cv::subtract(src2, src1, dst, noArray(), DataType<sift_wt>::type);
+    }
+    PyObject *ret = PyList_New(dogpyr.size());
+    for (int i=0; i<dogpyr.size(); i++) {
+      PyObject* layer = pbcvt::fromMatToNDArray(dogpyr.at(i));
+      PyList_SetItem(ret, i, layer);
+    }
+    return ret;
+  }
+
+  PyObject *image_pyramid(PyObject *impy, int firstOctave, int nOctaves) {
+    cv::Mat im;
+    im = pbcvt::fromNDArrayToMat(impy);
+    std::vector<cv::Mat> gauss_pyr = build_image_pyramid(im, firstOctave, nOctaves);
+    // cv::Mat out_kpts_t;
+    // cv::vconcat(out_kpts, out_kpts_t);
+    // PyObject *ret = pbcvt::fromMatToNDArray(out_kpts_t);
+    PyObject *ret = PyList_New(gauss_pyr.size());
+    for (int i=0; i<gauss_pyr.size(); i++) {
+      PyObject* layer = pbcvt::fromMatToNDArray(gauss_pyr.at(i));
+      PyList_SetItem(ret, i, layer);
+    }
+    return ret;
+  }
+
+  PyObject *sift_desc(PyObject *impy, PyObject *keypoints, int firstOctave, int nOctaves) {
+    // IDK if this is clear but there is a lot of opencv code in here
+
+    cv::Mat im, kpts;
+    im = pbcvt::fromNDArrayToMat(impy);
+    kpts = pbcvt::fromNDArrayToMat(keypoints);
+    // First, build a gauss_pyr
+    std::vector<cv::Mat> gauss_pyr = build_image_pyramid(im, firstOctave, nOctaves);
+
     std::vector<cv::Mat> out_kpts;
 
     // Compute orientation of keypoints
@@ -203,10 +247,6 @@ namespace pbcvt {
           kpt.at<float>(0, 4) = octave;
           kpt.at<float>(0, 5) = angle;
           if (firstOctave < 0) {
-            if (i < 10) {
-              printf("%f, %f, %f, %i, %i\n", x, y, size, layer, octave);
-              printf("Hi\n");
-            }
             kpt.at<float>(0, 2) /= (1 << -firstOctave);
             kpt.at<float>(0, 4) += firstOctave;
           }
@@ -233,7 +273,7 @@ namespace pbcvt {
       return NUMPY_IMPORT_ARRAY_RETVAL;
     }
 
-    BOOST_PYTHON_MODULE (pbcvt) {
+    BOOST_PYTHON_MODULE (sift_ori) {
       //using namespace XM;
       init_ar();
 
@@ -243,6 +283,8 @@ namespace pbcvt {
 
       //expose module-level functions
       def("sift_desc", sift_desc);
+      def("image_pyramid", image_pyramid);
+      def("dog_pyramid", dog_pyramid);
     }
 
   } //end namespace pbcvt
